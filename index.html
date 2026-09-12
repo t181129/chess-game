@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Wizard Chess">
+<title>Wizard Chess - 2人プレイ</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#080910;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{text-align:center;overflow-x:hidden}
+#game{
+  position:relative;width:100%;min-height:100vh;padding:12px 10px 24px;
+  background:radial-gradient(circle at 50% 20%,#3a2850aa,#080910 72%);
+}
+#scene{
+  position:absolute;inset:0;background-image:linear-gradient(#05050a33,#05050a55),url("wizard_chess_scene.png");
+  background-size:cover;background-position:center top;opacity:.82;filter:saturate(.95);
+}
+#ui{position:relative;z-index:2}
+.title{
+ display:inline-block;margin:8px auto 6px;padding:8px 30px;
+ border:1px solid #d5a94f;border-radius:18px;
+ background:#071322dd;box-shadow:0 0 20px #d7a84a55;
+}
+h1{margin:0;font-family:Georgia,serif;font-size:clamp(25px,6vw,42px);letter-spacing:1px}
+.sub{font-size:14px;margin-top:2px;color:#f1dfb2}
+#status{font-size:19px;font-weight:800;margin:8px 0 3px;text-shadow:0 2px 5px #000}
+#spell{height:25px;color:#ffe48a;font-weight:700;text-shadow:0 0 10px #ffd45c}
+#board{
+ width:min(92vw,620px);aspect-ratio:1;margin:8px auto 12px;
+ display:grid;grid-template-columns:repeat(8,1fr);
+ border:4px solid #d7b56d;border-radius:5px;overflow:hidden;
+ box-shadow:0 0 28px #000,0 0 20px #79cfff44;
+ touch-action:manipulation;
+}
+.s{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none}
+.l{background:#e2d2b4}.d{background:#4d4350}
+.s.selected{outline:4px solid #62d7ff;outline-offset:-4px;box-shadow:inset 0 0 28px #62d7ff99}
+.s.hint:after{content:"";position:absolute;width:17%;aspect-ratio:1;border-radius:50%;background:#65cfff;box-shadow:0 0 15px #65cfff}
+.s.capture:after{content:"";position:absolute;inset:7%;border:4px solid #ff5c68;border-radius:50%;box-shadow:0 0 15px #ff5c68}
+.piece{
+ position:relative;z-index:3;font-family:"Arial Unicode MS","DejaVu Sans",sans-serif;
+ font-size:clamp(30px,8.5vw,65px);line-height:1;filter:drop-shadow(0 5px 4px #000);
+}
+.white{color:#fff;-webkit-text-stroke:2px #302738}
+.black{color:#222;-webkit-text-stroke:1.5px #d9c184}
+.moveAnim{animation:moveMagic .5s cubic-bezier(.2,.9,.25,1)}
+@keyframes moveMagic{
+ 0%{transform:scale(.55) rotate(-12deg);opacity:.2;filter:drop-shadow(0 0 2px #fff)}
+ 55%{transform:scale(1.18) rotate(5deg);opacity:1;filter:drop-shadow(0 0 18px #65d9ff)}
+ 100%{transform:scale(1) rotate(0);filter:drop-shadow(0 5px 4px #000)}
+}
+.flash{animation:flash .55s ease-out}
+@keyframes flash{
+ 0%{box-shadow:inset 0 0 0 #fff}
+ 35%{box-shadow:inset 0 0 60px #65d9ff,0 0 35px #65d9ff}
+ 100%{box-shadow:none}
+}
+.controls{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+button{
+ border:1px solid #d7b56d;border-radius:12px;background:#081424ee;color:#fff;
+ padding:11px 20px;font-size:16px;font-weight:700;box-shadow:0 0 12px #000;
+}
+.panel{
+ width:min(92vw,620px);margin:0 auto;padding:8px 12px;
+ border:1px solid #b88b3f88;border-radius:12px;background:#07101ddd;
+ font-size:12px;color:#e5d7bd;
+}
+</style>
+</head>
+<body>
+<div id="game">
+<div id="scene"></div>
+<div id="ui">
+  <div class="title"><h1>⚔ Wizard Chess</h1><div class="sub">魔法使いのチェス — 2人プレイ</div></div>
+  <div id="status">白の番です</div>
+  <div id="spell">✨ 魔法の対局を始めよう！</div>
+  <div id="board"></div>
+  <div class="controls"><button onclick="resetGame()">↻ やり直す</button></div>
+  <div class="panel">駒をタップ → 移動先をタップ。青い光＝移動、赤い輪＝取れる駒。</div>
+</div>
+</div>
+<script>
+const SYMBOL={P:'♟',R:'♜',N:'♞',B:'♝',Q:'♛',K:'♚'};
+let board,selected=null,turn='w',gameOver=false,lastMove=null;
+
+function resetGame(){
+ board=[
+ ['r','n','b','q','k','b','n','r'],
+ ['p','p','p','p','p','p','p','p'],
+ ['','','','','','','',''],['','','','','','','',''],
+ ['','','','','','','',''],['','','','','','','',''],
+ ['P','P','P','P','P','P','P','P'],
+ ['R','N','B','Q','K','B','N','R']
+ ];
+ selected=null;turn='w';gameOver=false;lastMove=null;
+ document.getElementById('spell').textContent='✨ 魔法の対局を始めよう！';draw();
+}
+function isWhite(p){return p&&p===p.toUpperCase()}
+function colorOf(p){return isWhite(p)?'w':'b'}
+function draw(){
+ const bd=document.getElementById('board');bd.innerHTML='';
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  const sq=document.createElement('div');sq.className='s '+((r+c)%2?'d':'l');
+  const p=board[r][c];
+  if(selected&&selected[0]===r&&selected[1]===c)sq.classList.add('selected');
+  if(selected&&valid(selected[0],selected[1],r,c,turn))sq.classList.add(p?'capture':'hint');
+  if(lastMove&&((lastMove[0]===r&&lastMove[1]===c)||(lastMove[2]===r&&lastMove[3]===c)))sq.classList.add('flash');
+  if(p){
+   const span=document.createElement('span');span.className='piece '+(isWhite(p)?'white':'black');
+   span.textContent=SYMBOL[p.toUpperCase()];
+   if(lastMove&&lastMove[2]===r&&lastMove[3]===c)span.classList.add('moveAnim');
+   sq.appendChild(span);
+  }
+  sq.onclick=()=>clickSquare(r,c);bd.appendChild(sq);
+ }
+ document.getElementById('status').textContent=gameOver?'🏆 ゲーム終了':(turn==='w'?'⚪ 白の番です':'⚫ 黒の番です');
+}
+function clickSquare(r,c){
+ if(gameOver)return;
+ const p=board[r][c];
+ if(selected){
+  if(valid(selected[0],selected[1],r,c,turn)){
+   const from=[...selected],captured=board[r][c];
+   makeMove(...from,r,c);selected=null;
+   document.getElementById('spell').textContent=captured?'💥 魔法の一撃！駒が消えた！':'✨ 魔法の力で駒が動いた！';
+   if(captured&&captured.toUpperCase()==='K'){gameOver=true;document.getElementById('spell').textContent='🏆 勝利の魔法が輝いた！';draw();return}
+   turn=turn==='w'?'b':'w';draw();
+  }else if(p&&colorOf(p)===turn){selected=[r,c];draw()}else{selected=null;draw()}
+ }else if(p&&colorOf(p)===turn){selected=[r,c];draw()}
+}
+function pathClear(r,c,R,C){
+ const dr=Math.sign(R-r),dc=Math.sign(C-c);let rr=r+dr,cc=c+dc;
+ while(rr!==R||cc!==C){if(board[rr][cc])return false;rr+=dr;cc+=dc}return true
+}
+function valid(r,c,R,C,col){
+ const p=board[r][c];if(!p||colorOf(p)!==col)return false;
+ const t=board[R][C];if(t&&colorOf(t)===col)return false;
+ const dr=R-r,dc=C-c,a=Math.abs(dr),d=Math.abs(dc),u=p.toUpperCase();
+ if(u==='P'){const dir=col==='w'?-1:1,start=col==='w'?6:1;
+  if(dc===0&&!t&&dr===dir)return true;
+  if(dc===0&&!t&&r===start&&dr===2*dir&&!board[r+dir][c])return true;
+  return d===1&&dr===dir&&!!t}
+ if(u==='N')return(a===2&&d===1)||(a===1&&d===2);
+ if(u==='B')return a===d&&pathClear(r,c,R,C);
+ if(u==='R')return(dr===0||dc===0)&&pathClear(r,c,R,C);
+ if(u==='Q')return(a===d||dr===0||dc===0)&&pathClear(r,c,R,C);
+ if(u==='K')return a<=1&&d<=1;
+ return false
+}
+function makeMove(r,c,R,C){
+ board[R][C]=board[r][c];board[r][c]='';
+ if(board[R][C].toUpperCase()==='P'&&(R===0||R===7))board[R][C]=board[R][C]==='P'?'Q':'q';
+ lastMove=[r,c,R,C];
+}
+resetGame();
+</script>
+</body>
+</html>
